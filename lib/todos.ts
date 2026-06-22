@@ -36,22 +36,44 @@ export function getTodos(): Todo[] {
   })
 }
 
+const CHANNEL_ID = "remindme_high_priority"
+
 function parseTriggerAt(dueDate: string, dueTime: string): Date {
   const [year, month, day] = dueDate.split("-").map(Number)
   const [hour, minute] = dueTime.split(":").map(Number)
   return new Date(year, month - 1, day, hour, minute, 0)
 }
 
+async function ensureChannel(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return
+  try {
+    await LocalNotifications.createChannel({
+      id: CHANNEL_ID,
+      name: "待办提醒",
+      description: "RemindME 待办事项定时提醒",
+      importance: 5,
+      visibility: 1,
+      sound: "beep.wav",
+      vibration: true,
+      lights: true,
+    })
+  } catch (e) {
+    console.error("Failed to create notification channel:", e)
+  }
+}
+
 async function scheduleNotification(todo: Todo): Promise<void> {
   if (!Capacitor.isNativePlatform()) return
   try {
     await LocalNotifications.requestPermissions()
+    await ensureChannel()
     await LocalNotifications.schedule({
       notifications: [
         {
           title: "RemindME",
           body: todo.title,
           id: todo.id,
+          channelId: CHANNEL_ID,
           schedule: { at: parseTriggerAt(todo.dueDate, todo.dueTime) },
           sound: "beep.wav",
           smallIcon: "ic_stat_remindme",
