@@ -1,38 +1,36 @@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { getTodos } from "@/app/actions/todos"
 import { TodoItem } from "@/components/todo-item"
 import type { Todo } from "@/lib/db/schema"
 
 export const dynamic = "force-dynamic"
 
-function Section({ title, items }: { title: string; items: Todo[] }) {
-  if (items.length === 0) return null
-  return (
-    <section className="flex flex-col">
-      <h2 className="mb-1 text-xs uppercase tracking-widest text-muted-foreground">{title}</h2>
-      <ul className="divide-y divide-border">
-        {items.map((todo) => (
-          <TodoItem key={todo.id} todo={todo} />
-        ))}
-      </ul>
-    </section>
-  )
+const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+
+function dayKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
 export default async function HistoryPage() {
   const todos = await getTodos()
   const now = new Date()
+  const todayKey = dayKey(now)
 
-  const upcoming: Todo[] = []
-  const past: Todo[] = []
+  // 按日期分组
+  const groups = new Map<string, Todo[]>()
   for (const t of todos) {
-    const dueAt = new Date(`${t.dueDate}T${t.dueTime}`)
-    if (dueAt.getTime() >= now.getTime()) upcoming.push(t)
-    else past.push(t)
+    const list = groups.get(t.dueDate) ?? []
+    list.push(t)
+    groups.set(t.dueDate, list)
   }
-  // 过去的按时间倒序更符合直觉
-  past.reverse()
+
+  // 日期升序排列；每组内按时间升序
+  const days = Array.from(groups.keys()).sort()
+  for (const k of days) {
+    groups.get(k)!.sort((a, b) => a.dueTime.localeCompare(b.dueTime))
+  }
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 py-8">
@@ -50,10 +48,65 @@ export default async function HistoryPage() {
       {todos.length === 0 ? (
         <p className="mt-20 text-center text-sm text-muted-foreground">还没有任何待办</p>
       ) : (
-        <div className="flex flex-col gap-10">
-          <Section title="即将到来" items={upcoming} />
-          <Section title="已过去" items={past} />
-        </div>
+        <ol className="flex flex-col">
+          {days.map((key) => {
+            const items = groups.get(key)!
+            const [y, m, d] = key.split("-").map(Number)
+            const date = new Date(y, m - 1, d)
+            const isPast = key < todayKey
+            const isToday = key === todayKey
+
+            return (
+              <li key={key} className="relative flex gap-4 pb-8 last:pb-0">
+                {/* 时间轴竖线 */}
+                <span
+                  aria-hidden
+                  className="absolute bottom-0 left-[5px] top-7 w-px bg-border"
+                />
+
+                {/* 节点圆点 */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "relative z-10 mt-[7px] h-[11px] w-[11px] shrink-0 rounded-full border-2 border-background ring-1",
+                    isToday
+                      ? "bg-foreground ring-foreground"
+                      : isPast
+                        ? "bg-muted-foreground/40 ring-muted-foreground/40"
+                        : "bg-background ring-muted-foreground/60",
+                  )}
+                />
+
+                <div className="min-w-0 flex-1">
+                  {/* 日期标题 */}
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className={cn(
+                        "text-sm font-medium tabular-nums",
+                        isPast && "text-muted-foreground",
+                      )}
+                    >
+                      {m}月{d}日
+                    </span>
+                    <span className="text-xs text-muted-foreground">{WEEKDAYS[date.getDay()]}</span>
+                    {isToday && (
+                      <span className="rounded-full bg-foreground px-2 py-0.5 text-[10px] font-medium text-background">
+                        今天
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 该日期下的待办 */}
+                  <ul className="mt-1 flex flex-col">
+                    {items.map((todo) => (
+                      <TodoItem key={todo.id} todo={todo} />
+                    ))}
+                  </ul>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
       )}
     </main>
   )
