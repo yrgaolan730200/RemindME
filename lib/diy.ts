@@ -61,7 +61,7 @@ export function getDiyBlocks(): BlockKey[] {
   return valid ? order : DEFAULT_ORDER
 }
 
-function setDiyBlocks(order: BlockKey[]): void {
+export function setDiyBlocks(order: BlockKey[]): void {
   write("diy_blocks", order)
 }
 

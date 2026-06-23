@@ -2,8 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
-import { Plus, Clock, Settings, ChevronUp, ChevronDown } from "lucide-react"
+import { Plus, Clock, Settings, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DropResult,
+} from "@hello-pangea/dnd"
 import { getTodos } from "@/lib/todos"
 import type { Todo } from "@/lib/todos"
 import {
@@ -12,10 +18,24 @@ import {
   getDiyTitle,
   setDiyTitle,
   getDiyBlocks,
-  moveBlock,
+  setDiyBlocks,
   isDiyMode,
   exitDiyMode,
 } from "@/lib/diy"
+
+// ═══════════════════════════════════════════════
+// StrictMode 兼容 Droppable
+// ═══════════════════════════════════════════════
+
+function StrictModeDroppable({ children, droppableId }: { children: (provided: any, snapshot: any) => React.ReactNode; droppableId: string }) {
+  const [enabled, setEnabled] = useState(false)
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setEnabled(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
+  if (!enabled) return null
+  return <Droppable droppableId={droppableId}>{children}</Droppable>
+}
 
 // ═══════════════════════════════════════════════
 // 区块渲染函数
@@ -121,14 +141,23 @@ export default function HomePage() {
 
   const handleTitleChange = useCallback((v: string) => setTitle(v), [])
 
-  function handleMove(index: number, dir: "up" | "down") {
-    setBlocks((prev) => moveBlock(prev, index, dir))
-  }
-
   function handleSave() {
     setDiyTitle(title)
     exitDiyMode()
     setEditing(false)
+  }
+
+  function onDragEnd(result: DropResult) {
+    if (!result.destination) return
+    const sourceIndex = result.source.index
+    const destIndex = result.destination.index
+    if (sourceIndex === destIndex) return
+
+    const reordered = Array.from(blocks)
+    const [removed] = reordered.splice(sourceIndex, 1)
+    reordered.splice(destIndex, 0, removed)
+    setBlocks(reordered)
+    setDiyBlocks(reordered)
   }
 
   const blockRenderers: Record<BlockKey, () => React.ReactNode> = {
@@ -141,7 +170,7 @@ export default function HomePage() {
     <main
       className={cn(
         "flex min-h-dvh flex-col items-center justify-center px-6 pb-8",
-        editing && "gap-6 justify-start",
+        editing && "gap-0 justify-start",
       )}
       style={{
         paddingTop: editing
@@ -152,7 +181,7 @@ export default function HomePage() {
       {/* DIY 模式顶栏 */}
       {editing && (
         <div
-          className="fixed inset-x-0 z-10 mx-auto flex max-w-md items-center justify-between px-6 py-4"
+          className="fixed inset-x-0 z-50 mx-auto flex max-w-md items-center justify-between px-6 py-4"
           style={{ top: "calc(env(safe-area-inset-top, 24px) + 0.5rem)" }}
         >
           <span className="text-xs uppercase tracking-widest text-muted-foreground/50">
@@ -168,64 +197,60 @@ export default function HomePage() {
         </div>
       )}
 
-      {blocks.map((key, i) => {
-        const render = blockRenderers[key]
-        const isFirst = i === 0
-        const isLast = i === blocks.length - 1
+      {/* ── 编辑模式：拖拽排序 ── */}
+      {editing ? (
+        <DragDropContext onDragEnd={onDragEnd}>
+          <StrictModeDroppable droppableId="diy-blocks">
+            {(provided) => (
+              <div
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                className="flex w-full flex-col gap-6"
+              >
+                {blocks.map((key, i) => (
+                  <Draggable key={key} draggableId={key} index={i}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        className={cn(
+                          "relative flex flex-col items-center w-full rounded-2xl border border-dashed border-muted-foreground/15 py-6 px-4 transition-shadow select-none",
+                          snapshot.isDragging &&
+                            "shadow-2xl bg-background scale-[1.03] z-50 border-muted-foreground/30",
+                        )}
+                      >
+                        {/* 拖拽手柄 */}
+                        <div
+                          {...provided.dragHandleProps}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground/20 hover:text-muted-foreground/50 active:text-foreground transition-colors cursor-grab active:cursor-grabbing"
+                          aria-label={`拖拽排序 ${BLOCK_LABELS[key]}`}
+                        >
+                          <GripVertical className="h-5 w-5" strokeWidth={1.5} />
+                        </div>
 
-        return (
-          <div
-            key={key}
-            className={cn(
-              "relative flex flex-col items-center w-full",
-              editing && "rounded-2xl border border-dashed border-muted-foreground/15 py-6 px-4",
-            )}
-          >
-            {/* 排序箭头 */}
-            {editing && (
-              <div className="absolute -left-1 top-1/2 -translate-y-1/2 flex flex-col gap-0.5">
-                <button
-                  type="button"
-                  disabled={isFirst}
-                  aria-label={`${BLOCK_LABELS[key]} 上移`}
-                  onClick={() => handleMove(i, "up")}
-                  className={cn(
-                    "flex h-6 w-6 items-center justify-center rounded transition-colors",
-                    isFirst
-                      ? "text-muted-foreground/15 cursor-default"
-                      : "text-muted-foreground/40 hover:text-foreground",
-                  )}
-                >
-                  <ChevronUp className="h-4 w-4" strokeWidth={1.5} />
-                </button>
-                <button
-                  type="button"
-                  disabled={isLast}
-                  aria-label={`${BLOCK_LABELS[key]} 下移`}
-                  onClick={() => handleMove(i, "down")}
-                  className={cn(
-                    "flex h-6 w-6 items-center justify-center rounded transition-colors",
-                    isLast
-                      ? "text-muted-foreground/15 cursor-default"
-                      : "text-muted-foreground/40 hover:text-foreground",
-                  )}
-                >
-                  <ChevronDown className="h-4 w-4" strokeWidth={1.5} />
-                </button>
+                        {/* 区块标签 */}
+                        <span className="mb-3 text-[10px] uppercase tracking-widest text-muted-foreground/30">
+                          {BLOCK_LABELS[key]}
+                        </span>
+
+                        {blockRenderers[key]()}
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+                {provided.placeholder}
               </div>
             )}
-
-            {/* 区块标签（仅编辑模式） */}
-            {editing && (
-              <span className="mb-3 text-[10px] uppercase tracking-widest text-muted-foreground/30">
-                {BLOCK_LABELS[key]}
-              </span>
-            )}
-
-            {render()}
+          </StrictModeDroppable>
+        </DragDropContext>
+      ) : (
+        /* ── 普通模式：静态渲染 ── */
+        blocks.map((key) => (
+          <div key={key} className="relative flex flex-col items-center w-full">
+            {blockRenderers[key]()}
           </div>
-        )
-      })}
+        ))
+      )}
     </main>
   )
 }
