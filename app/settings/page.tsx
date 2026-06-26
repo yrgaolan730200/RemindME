@@ -45,7 +45,7 @@ export default function SettingsPage() {
   return (
     <main
       className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-8"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 32px) + 2rem)" }}
+      style={{ paddingTop: "max(env(safe-area-inset-top), 24px)" }}
     >
       <header className="mb-10 flex items-center">
         <Link

@@ -27,7 +27,13 @@ import {
 // StrictMode 兼容 Droppable
 // ═══════════════════════════════════════════════
 
-function StrictModeDroppable({ children, droppableId }: { children: (provided: any, snapshot: any) => React.ReactNode; droppableId: string }) {
+function StrictModeDroppable({
+  children,
+  droppableId,
+}: {
+  children: (provided: any) => React.ReactNode
+  droppableId: string
+}) {
   const [enabled, setEnabled] = useState(false)
   useEffect(() => {
     const id = requestAnimationFrame(() => setEnabled(true))
@@ -38,10 +44,18 @@ function StrictModeDroppable({ children, droppableId }: { children: (provided: a
 }
 
 // ═══════════════════════════════════════════════
-// 区块渲染函数
+// 区块渲染函数（严格独立，互不包含）
 // ═══════════════════════════════════════════════
 
-function TitleBlock({ editing, title, onChange }: { editing: boolean; title: string; onChange: (v: string) => void }) {
+function TitleBlock({
+  editing,
+  title,
+  onChange,
+}: {
+  editing: boolean
+  title: string
+  onChange: (v: string) => void
+}) {
   if (editing) {
     return (
       <input
@@ -69,16 +83,17 @@ function TodoListBlock() {
 
   if (todos.length === 0) {
     return (
-      <p className="text-center text-sm text-muted-foreground/40">
-        暂无待办
-      </p>
+      <p className="text-center text-sm text-muted-foreground/40">暂无待办</p>
     )
   }
 
   return (
     <ul className="flex flex-col gap-2 w-full max-w-xs mx-auto">
       {todos.slice(0, 5).map((t) => (
-        <li key={t.id} className="flex items-center gap-3 text-sm text-muted-foreground">
+        <li
+          key={t.id}
+          className="flex items-center gap-3 text-sm text-muted-foreground"
+        >
           <span className="w-10 shrink-0 text-xs tabular-nums text-muted-foreground/50">
             {t.dueTime ? t.dueTime.slice(0, 5) : "—"}
           </span>
@@ -131,7 +146,11 @@ function ButtonsBlock() {
 export default function HomePage() {
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState("到时候记得提醒我！")
-  const [blocks, setBlocks] = useState<BlockKey[]>(["title", "todolist", "buttons"])
+  const [blocks, setBlocks] = useState<BlockKey[]>([
+    "title",
+    "todolist",
+    "buttons",
+  ])
 
   useEffect(() => {
     setBlocks(getDiyBlocks())
@@ -161,7 +180,9 @@ export default function HomePage() {
   }
 
   const blockRenderers: Record<BlockKey, () => React.ReactNode> = {
-    title: () => <TitleBlock editing={editing} title={title} onChange={handleTitleChange} />,
+    title: () => (
+      <TitleBlock editing={editing} title={title} onChange={handleTitleChange} />
+    ),
     todolist: () => <TodoListBlock />,
     buttons: () => <ButtonsBlock />,
   }
@@ -170,19 +191,19 @@ export default function HomePage() {
     <main
       className={cn(
         "flex min-h-dvh flex-col items-center justify-center px-6 pb-8",
-        editing && "gap-0 justify-start",
+        editing && "justify-start",
       )}
       style={{
         paddingTop: editing
-          ? "calc(env(safe-area-inset-top, 32px) + 6rem)"
-          : "calc(env(safe-area-inset-top, 32px) + 2rem)",
+          ? "calc(max(env(safe-area-inset-top), 24px) + 5rem)"
+          : "max(env(safe-area-inset-top), 24px)",
       }}
     >
       {/* DIY 模式顶栏 */}
       {editing && (
         <div
           className="fixed inset-x-0 z-50 mx-auto flex max-w-md items-center justify-between px-6 py-4"
-          style={{ top: "calc(env(safe-area-inset-top, 24px) + 0.5rem)" }}
+          style={{ top: "max(env(safe-area-inset-top), 24px)" }}
         >
           <span className="text-xs uppercase tracking-widest text-muted-foreground/50">
             DIY 实验室
@@ -244,12 +265,14 @@ export default function HomePage() {
           </StrictModeDroppable>
         </DragDropContext>
       ) : (
-        /* ── 普通模式：静态渲染 ── */
-        blocks.map((key) => (
-          <div key={key} className="relative flex flex-col items-center w-full">
-            {blockRenderers[key]()}
-          </div>
-        ))
+        /* ── 普通模式：静态渲染（区块间 gap-10 确保隔离）── */
+        <div className="flex w-full flex-col gap-10">
+          {blocks.map((key) => (
+            <div key={key} className="flex flex-col items-center w-full">
+              {blockRenderers[key]()}
+            </div>
+          ))}
+        </div>
       )}
     </main>
   )
