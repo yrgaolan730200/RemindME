@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ChevronDown, Check } from "lucide-react"
+import { ArrowLeft, ChevronDown, Check, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { WheelPicker } from "@/components/wheel-picker"
 import { addTodo, type RepeatMode } from "@/lib/todos"
+import { openExactAlarmSettings } from "@/lib/reminderScheduler"
 
 function pad(n: number) {
   return String(n).padStart(2, "0")
@@ -37,6 +38,7 @@ export function AddTodoForm() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPermissionCard, setShowPermissionCard] = useState(false)
 
   const now = new Date()
   const [title, setTitle] = useState("")
@@ -108,6 +110,7 @@ export function AddTodoForm() {
 
   async function handleSubmit() {
     setError(null)
+    setShowPermissionCard(false)
     setSaving(true)
     try {
       await addTodo({
@@ -121,7 +124,12 @@ export function AddTodoForm() {
       })
       router.push("/")
     } catch (e) {
-      setError(e instanceof Error ? e.message : "添加失败")
+      const msg = e instanceof Error ? e.message : "添加失败"
+      if (msg.includes("闹钟和提醒") || msg.includes("闹钟") || msg.includes("提醒")) {
+        setShowPermissionCard(true)
+      } else {
+        setError(msg)
+      }
       setSaving(false)
     }
   }
@@ -306,6 +314,33 @@ export function AddTodoForm() {
             )}
           </div>
 
+          {/* 闹钟权限提示卡片 */}
+          {showPermissionCard && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-50 dark:bg-amber-950/20 px-5 py-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" strokeWidth={1.5} />
+                <div className="flex flex-col gap-3 min-w-0">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">需要开启闹钟权限</p>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      RemindME 需要"闹钟和提醒"权限，才能在锁屏和后台状态下准时提醒你。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try { await openExactAlarmSettings() } catch {}
+                    }}
+                    className="self-start rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90"
+                  >
+                    去开启权限
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 普通错误 */}
           {error && <p className="text-center text-sm text-destructive">{error}</p>}
         </div>
       </div>
