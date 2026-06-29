@@ -12,12 +12,19 @@ export type RepeatMode = "none" | "workdays" | "weekends" | "mwf" | "tts" | "cus
 export interface Todo {
   id: number
   title: string
-  dueDate: string
-  dueTime: string
   completed: boolean
   createdAt: string
-  repeat?: RepeatMode
-  repeatDays?: number[] // Capacitor weekday: 1=Sun, 2=Mon, …, 7=Sat
+
+  // 一次性提醒
+  reminderEnabled?: boolean
+  dueDate?: string
+  dueTime?: string
+
+  // 重复提醒（完全独立于一次性提醒）
+  repeatEnabled?: boolean
+  repeatWeekdays?: number[]  // Capacitor: 1=Sun, 2=Mon, …, 7=Sat
+  repeatTime?: string        // "09:00:00"
+
   notificationIds?: number[]
 }
 
@@ -39,66 +46,90 @@ function writeTodos(todos: Todo[]): void {
 
 export function getTodos(): Todo[] {
   return readTodos().sort((a, b) => {
-    const dateCmp = a.dueDate.localeCompare(b.dueDate)
+    const da = a.dueDate ?? ""
+    const db = b.dueDate ?? ""
+    const dateCmp = da.localeCompare(db)
     if (dateCmp !== 0) return dateCmp
-    return a.dueTime.localeCompare(b.dueTime)
+    const ta = a.dueTime ?? a.repeatTime ?? ""
+    const tb = b.dueTime ?? b.repeatTime ?? ""
+    return ta.localeCompare(tb)
   })
 }
 
 export async function addTodo(input: {
   title: string
-  dueDate: string
+  dueDate?: string
   dueTime?: string
-  repeat?: RepeatMode
-  repeatDays?: number[]
+  reminderEnabled?: boolean
+  repeatEnabled?: boolean
+  repeatWeekdays?: number[]
+  repeatTime?: string
 }): Promise<Todo> {
   const title = input.title.trim()
   if (!title) throw new Error("请输入待办名称")
-  if (!input.dueDate) throw new Error("请选择日期")
+
+  // 一次性提醒校验
+  if (input.reminderEnabled) {
+    if (!input.dueDate) throw new Error("请选择日期")
+    if (!input.dueTime) throw new Error("请选择提醒时间")
+  }
+
+  // 重复提醒校验（独立）
+  if (input.repeatEnabled) {
+    if (!input.repeatTime) throw new Error("请选择重复提醒时间")
+    if (!input.repeatWeekdays || input.repeatWeekdays.length === 0) {
+      throw new Error("请选择重复提醒的星期")
+    }
+  }
 
   const todos = readTodos()
   const maxId = todos.reduce((max, t) => Math.max(max, t.id), 0)
   const newId = maxId + 1
 
-  // 必须先调度通知，成功后才写入本地存储（原子性保障）
-  let notificationIds: number[] = []
-  if (input.dueTime) {
-    const hasRepeat =
-      input.repeat && input.repeat !== "none" &&
-      input.repeatDays && input.repeatDays.length > 0
+  // 原子性：先调度，再写 localStorage
+  // 一次性提醒和重复提醒分别独立调度
+  const oneTimeIds: number[] = []
+  const repeatIds: number[] = []
 
-    if (hasRepeat) {
-      notificationIds = await scheduleRepeatReminders({
+  if (input.reminderEnabled && input.dueDate && input.dueTime) {
+    const nid = await scheduleReminder({
+      id: newId,
+      title,
+      body: title,
+      dueDate: input.dueDate,
+      dueTime: input.dueTime,
+    })
+    if (nid != null) oneTimeIds.push(nid)
+  }
+
+  if (input.repeatEnabled && input.repeatTime && input.repeatWeekdays && input.repeatWeekdays.length > 0) {
+    try {
+      const rids = await scheduleRepeatReminders({
         baseId: newId,
         title,
         body: title,
-        dueDate: input.dueDate,
-        dueTime: input.dueTime,
-        weekdays: input.repeatDays!,
+        repeatTime: input.repeatTime,
+        weekdays: input.repeatWeekdays,
       })
-    } else {
-      const nid = await scheduleReminder({
-        id: newId,
-        title,
-        body: title,
-        dueDate: input.dueDate,
-        dueTime: input.dueTime,
-      })
-      if (nid != null) notificationIds = [nid]
+      repeatIds.push(...rids)
+    } catch (e) {
+      // 重复调度失败时，如果已有一次性提醒，仍然保存但记录错误
+      if (oneTimeIds.length === 0) throw e
     }
   }
 
-  // 调度成功后才写 localStorage
   const todo: Todo = {
     id: newId,
     title,
-    dueDate: input.dueDate,
-    dueTime: input.dueTime ?? "",
     completed: false,
     createdAt: new Date().toISOString(),
-    repeat: input.repeat ?? "none",
-    repeatDays: input.repeatDays ?? [],
-    notificationIds,
+    reminderEnabled: input.reminderEnabled ?? false,
+    dueDate: input.dueDate || "",
+    dueTime: input.dueTime || "",
+    repeatEnabled: input.repeatEnabled ?? false,
+    repeatWeekdays: input.repeatWeekdays ?? [],
+    repeatTime: input.repeatTime || "",
+    notificationIds: [...oneTimeIds, ...repeatIds],
   }
   todos.push(todo)
   writeTodos(todos)

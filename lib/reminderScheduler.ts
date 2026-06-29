@@ -44,9 +44,8 @@ export interface RepeatReminderParams {
   baseId: number
   title: string
   body: string
-  dueDate: string
-  dueTime: string
-  weekdays: number[] // Capacitor weekday: 1=Sun, 2=Mon, …, 7=Sat
+  repeatTime: string    // "09:00:00"
+  weekdays: number[]    // Capacitor weekday: 1=Sun, 2=Mon, …, 7=Sat
 }
 
 function parseFireAt(dueDate: string, dueTime: string): number {
@@ -116,7 +115,7 @@ export async function scheduleReminder(params: ReminderParams): Promise<number |
 
 /** 调度重复提醒 — 为每个 weekday 生成独立通知，返回所有通知 ID 数组 */
 export async function scheduleRepeatReminders(params: RepeatReminderParams): Promise<number[]> {
-  const { hour, minute } = parseTime(params.dueTime)
+  const { hour, minute } = parseTime(params.repeatTime)
   const platform = Capacitor.getPlatform()
   const sound = getNotificationSound()
   const ids: number[] = []

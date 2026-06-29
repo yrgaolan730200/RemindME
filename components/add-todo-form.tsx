@@ -15,11 +15,10 @@ function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate()
 }
 
-const WEEKDAY_KEYS = [1, 2, 3, 4, 5, 6, 7] as const // Capacitor: 1=Sun...7=Sat
+const WEEKDAY_KEYS = [1, 2, 3, 4, 5, 6, 7] as const
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"]
 
-const REPEAT_OPTIONS: { value: RepeatMode; label: string }[] = [
-  { value: "none", label: "不重复" },
+const REPEAT_MODE_OPTIONS: { value: RepeatMode; label: string }[] = [
   { value: "workdays", label: "工作日 (周一至周五)" },
   { value: "weekends", label: "休息日 (周六、周日)" },
   { value: "mwf", label: "周一、周三、周五" },
@@ -46,20 +45,23 @@ export function AddTodoForm() {
   const [day, setDay] = useState(now.getDate())
   const [hour, setHour] = useState(now.getHours())
   const [minute, setMinute] = useState(now.getMinutes())
-  const [isTimeReminderEnabled, setIsTimeReminderEnabled] = useState(false)
 
-  // ── 重复提醒状态 ──
-  const [repeatEnabled, setRepeatEnabled] = useState(false)
-  const [repeatMode, setRepeatMode] = useState<RepeatMode>("none")
+  // ── 一次性时间提醒（独立开关）──
+  const [timeReminderOn, setTimeReminderOn] = useState(false)
+
+  // ── 重复提醒（独立开关）──
+  const [repeatOn, setRepeatOn] = useState(false)
+  const [repeatHour, setRepeatHour] = useState(now.getHours())
+  const [repeatMinute, setRepeatMinute] = useState(now.getMinutes())
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>("workdays")
   const [repeatOpen, setRepeatOpen] = useState(false)
   const [customDays, setCustomDays] = useState<number[]>([])
 
   const years = useMemo(
-    () =>
-      Array.from({ length: 11 }, (_, i) => ({
-        value: now.getFullYear() + i,
-        label: `${now.getFullYear() + i}`,
-      })),
+    () => Array.from({ length: 11 }, (_, i) => {
+      const v = now.getFullYear() + i
+      return { value: v, label: `${v}` }
+    }),
     [now],
   )
   const months = useMemo(
@@ -70,11 +72,11 @@ export function AddTodoForm() {
     const total = daysInMonth(year, month)
     return Array.from({ length: total }, (_, i) => ({ value: i + 1, label: `${pad(i + 1)}` }))
   }, [year, month])
-  const hours = useMemo(
+  const hoursArr = useMemo(
     () => Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${pad(i)}` })),
     [],
   )
-  const minutes = useMemo(
+  const minutesArr = useMemo(
     () => Array.from({ length: 60 }, (_, i) => ({ value: i, label: `${pad(i)}` })),
     [],
   )
@@ -82,20 +84,16 @@ export function AddTodoForm() {
   const maxDay = daysInMonth(year, month)
   const safeDay = Math.min(day, maxDay)
 
-  function getSelectedDays(): number[] {
-    if (!repeatEnabled || repeatMode === "none") return []
-    if (repeatMode === "custom") return customDays.sort((a, b) => a - b)
-    return PRESET_DAYS[repeatMode] ?? []
+  function getSelectedWeekdays(): number[] {
+    if (!repeatOn) return []
+    if (repeatMode === "custom") return [...customDays].sort((a, b) => a - b)
+    return [...(PRESET_DAYS[repeatMode] ?? [])]
   }
 
   function handleRepeatModeSelect(mode: RepeatMode) {
     setRepeatMode(mode)
     setRepeatOpen(false)
-    if (mode === "workdays") setCustomDays(PRESET_DAYS.workdays)
-    else if (mode === "weekends") setCustomDays(PRESET_DAYS.weekends)
-    else if (mode === "mwf") setCustomDays(PRESET_DAYS.mwf)
-    else if (mode === "tts") setCustomDays(PRESET_DAYS.tts)
-    else setCustomDays([])
+    if (mode === "custom") setCustomDays([])
   }
 
   function toggleCustomDay(wd: number) {
@@ -105,21 +103,21 @@ export function AddTodoForm() {
   }
 
   function getRepeatLabel(): string {
-    return REPEAT_OPTIONS.find((r) => r.value === repeatMode)?.label ?? "不重复"
+    return REPEAT_MODE_OPTIONS.find((r) => r.value === repeatMode)?.label ?? "工作日"
   }
 
   async function handleSubmit() {
     setError(null)
-    const dueDate = `${year}-${pad(month)}-${pad(safeDay)}`
-    const dueTime = isTimeReminderEnabled ? `${pad(hour)}:${pad(minute)}:00` : ""
     setSaving(true)
     try {
       await addTodo({
         title,
-        dueDate,
-        dueTime,
-        repeat: repeatEnabled ? repeatMode : "none",
-        repeatDays: getSelectedDays(),
+        dueDate: `${year}-${pad(month)}-${pad(safeDay)}`,
+        dueTime: timeReminderOn ? `${pad(hour)}:${pad(minute)}:00` : undefined,
+        reminderEnabled: timeReminderOn,
+        repeatEnabled: repeatOn,
+        repeatTime: repeatOn ? `${pad(repeatHour)}:${pad(repeatMinute)}:00` : undefined,
+        repeatWeekdays: getSelectedWeekdays(),
       })
       router.push("/")
     } catch (e) {
@@ -142,15 +140,13 @@ export function AddTodoForm() {
         <h1 className="ml-2 text-base font-medium tracking-wide">添加待办</h1>
       </header>
 
-      {/* Scrollable form body */}
+      {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto pb-6">
         <div className="flex flex-col gap-6">
 
           {/* 名称 */}
           <div className="flex flex-col gap-2">
-            <label htmlFor="title" className="text-xs uppercase tracking-widest text-muted-foreground">
-              名称
-            </label>
+            <label htmlFor="title" className="text-xs uppercase tracking-widest text-muted-foreground">名称</label>
             <input
               id="title"
               value={title}
@@ -173,100 +169,79 @@ export function AddTodoForm() {
             />
           </div>
 
-          {/* 时间（选填） */}
+          {/* ═══ 一次性时间提醒（独立开关）═══ */}
           <div className="flex flex-col gap-2">
-            <span className="text-xs uppercase tracking-widest text-muted-foreground">提醒时间</span>
+            <span className="text-xs uppercase tracking-widest text-muted-foreground">一次性提醒</span>
 
             <label
               className={`flex items-center justify-between rounded-2xl border px-5 py-4 transition-colors cursor-pointer ${
-                isTimeReminderEnabled
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border text-foreground hover:bg-muted"
+                timeReminderOn ? "border-foreground bg-foreground text-background" : "border-border text-foreground hover:bg-muted"
               }`}
             >
               <span className="text-base">开启时间提醒</span>
               <button
-                type="button"
-                role="switch"
-                aria-checked={isTimeReminderEnabled}
-                onClick={(e) => {
-                  e.preventDefault()
-                  const next = !isTimeReminderEnabled
-                  setIsTimeReminderEnabled(next)
-                  // 关闭时间时同步关闭重复
-                  if (!next) {
-                    setRepeatEnabled(false)
-                    setRepeatMode("none")
-                  }
-                }}
+                type="button" role="switch" aria-checked={timeReminderOn}
+                onClick={(e) => { e.preventDefault(); setTimeReminderOn(!timeReminderOn) }}
                 className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors ${
-                  isTimeReminderEnabled ? "bg-background/20" : "bg-muted-foreground/30"
+                  timeReminderOn ? "bg-background/20" : "bg-muted-foreground/30"
                 }`}
               >
-                <span
-                  className={`inline-block h-4 w-4 rounded-full shadow transition-transform ${
-                    isTimeReminderEnabled
-                      ? "translate-x-5 bg-background"
-                      : "translate-x-1 bg-background"
-                  }`}
-                />
+                <span className={`inline-block h-4 w-4 rounded-full shadow transition-transform bg-background ${
+                  timeReminderOn ? "translate-x-5" : "translate-x-1"
+                }`} />
               </button>
             </label>
 
-            {isTimeReminderEnabled && (
+            {timeReminderOn && (
               <WheelPicker
                 columns={[
-                  { items: hours, value: hour, onChange: setHour, ariaLabel: "时" },
-                  { items: minutes, value: minute, onChange: setMinute, ariaLabel: "分" },
+                  { items: hoursArr, value: hour, onChange: setHour, ariaLabel: "时" },
+                  { items: minutesArr, value: minute, onChange: setMinute, ariaLabel: "分" },
                 ]}
               />
             )}
           </div>
 
-          {/* 重复提醒 — 独立区块，始终可见 */}
+          {/* ═══ 重复提醒（独立开关，不与一次性提醒联动）═══ */}
           <div className="flex flex-col gap-2">
-            <span className="text-xs uppercase tracking-widest text-muted-foreground">重复</span>
+            <span className="text-xs uppercase tracking-widest text-muted-foreground">重复提醒</span>
 
             <label
               className={`flex items-center justify-between rounded-2xl border px-5 py-4 transition-colors cursor-pointer ${
-                repeatEnabled
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border text-foreground hover:bg-muted"
+                repeatOn ? "border-foreground bg-foreground text-background" : "border-border text-foreground hover:bg-muted"
               }`}
             >
-              <span className="text-base">重复提醒</span>
+              <span className="text-base">开启重复提醒</span>
               <button
-                type="button"
-                role="switch"
-                aria-checked={repeatEnabled}
+                type="button" role="switch" aria-checked={repeatOn}
                 onClick={(e) => {
                   e.preventDefault()
-                  const next = !repeatEnabled
-                  setRepeatEnabled(next)
-                  if (next) {
-                    // 开启重复必须同时开启时间
-                    if (!isTimeReminderEnabled) setIsTimeReminderEnabled(true)
-                    if (repeatMode === "none") setRepeatMode("workdays")
-                  } else {
-                    setRepeatMode("none")
+                  const next = !repeatOn
+                  setRepeatOn(next)
+                  if (next && getSelectedWeekdays().length === 0) {
+                    setCustomDays(PRESET_DAYS.workdays)
                   }
                 }}
                 className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors ${
-                  repeatEnabled ? "bg-background/20" : "bg-muted-foreground/30"
+                  repeatOn ? "bg-background/20" : "bg-muted-foreground/30"
                 }`}
               >
-                <span
-                  className={`inline-block h-4 w-4 rounded-full shadow transition-transform ${
-                    repeatEnabled
-                      ? "translate-x-5 bg-background"
-                      : "translate-x-1 bg-background"
-                  }`}
-                />
+                <span className={`inline-block h-4 w-4 rounded-full shadow transition-transform bg-background ${
+                  repeatOn ? "translate-x-5" : "translate-x-1"
+                }`} />
               </button>
             </label>
 
-            {repeatEnabled && (
+            {repeatOn && (
               <>
+                {/* 重复提醒时间 */}
+                <WheelPicker
+                  columns={[
+                    { items: hoursArr, value: repeatHour, onChange: setRepeatHour, ariaLabel: "重复时" },
+                    { items: minutesArr, value: repeatMinute, onChange: setRepeatMinute, ariaLabel: "重复分" },
+                  ]}
+                />
+
                 {/* 重复模式下拉 */}
                 <div className="relative">
                   <button
@@ -275,22 +250,16 @@ export function AddTodoForm() {
                     className="flex w-full items-center justify-between rounded-2xl border border-border px-5 py-4 text-left text-foreground transition-colors hover:bg-muted"
                   >
                     <span className="text-base">{getRepeatLabel()}</span>
-                    <ChevronDown
-                      className={`h-4 w-4 text-muted-foreground transition-transform ${
-                        repeatOpen ? "rotate-180" : ""
-                      }`}
-                      strokeWidth={1.5}
-                    />
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${repeatOpen ? "rotate-180" : ""}`} strokeWidth={1.5} />
                   </button>
 
                   {repeatOpen && (
                     <div className="absolute inset-x-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
-                      {REPEAT_OPTIONS.map((opt) => {
+                      {REPEAT_MODE_OPTIONS.map((opt) => {
                         const selected = repeatMode === opt.value
                         return (
                           <button
-                            key={opt.value}
-                            type="button"
+                            key={opt.value} type="button"
                             onClick={() => handleRepeatModeSelect(opt.value)}
                             className={`flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-muted ${
                               selected ? "text-foreground" : "text-muted-foreground"
@@ -305,20 +274,17 @@ export function AddTodoForm() {
                   )}
                 </div>
 
-                {/* 自定义星期选择 */}
+                {/* 自定义星期 */}
                 {repeatMode === "custom" && (
                   <div className="flex items-center justify-center gap-2 py-2">
                     {WEEKDAY_KEYS.map((wd) => {
                       const active = customDays.includes(wd)
                       return (
                         <button
-                          key={wd}
-                          type="button"
+                          key={wd} type="button"
                           onClick={() => toggleCustomDay(wd)}
                           className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition-colors ${
-                            active
-                              ? "bg-foreground text-background"
-                              : "text-muted-foreground hover:bg-muted"
+                            active ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
                           }`}
                         >
                           {WEEKDAY_LABELS[wd - 1]}
@@ -331,16 +297,13 @@ export function AddTodoForm() {
             )}
           </div>
 
-          {/* Error */}
           {error && <p className="text-center text-sm text-destructive">{error}</p>}
         </div>
       </div>
 
-      {/* Sticky bottom save button with safe area */}
+      {/* Sticky save button */}
       <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={saving}
+        type="button" onClick={handleSubmit} disabled={saving}
         className="shrink-0 w-full rounded-full bg-primary py-3.5 text-sm font-medium tracking-wide text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
         style={{ paddingBottom: "max(calc(env(safe-area-inset-bottom, 24px) + 0.875rem), 0.875rem)" }}
       >
