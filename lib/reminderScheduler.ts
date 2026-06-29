@@ -123,7 +123,7 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
   // 通知权限
   await LocalNotifications.requestPermissions().catch(() => {})
 
-  // Android: 分别注册多个 AlarmManager 闹钟
+  // Android: 预排未来 30 天内所有匹配 weekday 的提醒
   if (platform === "android") {
     const plugin = getNativePlugin()
     if (plugin) {
@@ -131,15 +131,24 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
       if (!canSchedule) {
         throw new Error("需要「闹钟和提醒」权限才能设置定时提醒，请在系统设置中开启")
       }
-      for (const wd of params.weekdays) {
+      // 从今天开始，预排未来 30 天
+      for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
+        const d = new Date()
+        d.setHours(hour, minute, 0, 0)
+        d.setDate(d.getDate() + dayOffset)
+        const jsDay = d.getDay()
+        const capacitorDay = jsDay === 0 ? 1 : jsDay + 1
+        if (!params.weekdays.includes(capacitorDay)) continue
+        // 跳过已过去的时间
+        if (dayOffset === 0 && d.getTime() <= Date.now()) continue
+
         const nid = makeNotificationId()
-        const firstFire = nextFireDate(wd, hour, minute)
         try {
           await plugin.scheduleReminderAlarm({
             id: nid,
             title: "RemindME",
             body: params.body,
-            fireAt: firstFire,
+            fireAt: d.getTime(),
             soundName: getRawSoundName(),
           })
           ids.push(nid)
@@ -170,22 +179,6 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
   await LocalNotifications.requestPermissions()
   await LocalNotifications.schedule({ notifications })
   return ids
-}
-
-/** 计算下一个指定 weekday+time 的时间戳（Android AlarmManager 用） */
-function nextFireDate(weekday: number, hour: number, minute: number): number {
-  const now = new Date()
-  const target = new Date(now)
-  target.setHours(hour, minute, 0, 0)
-
-  // Capacitor weekday: 1=Sun…7=Sat; JS getDay(): 0=Sun…6=Sat
-  const jsDay = weekday === 1 ? 0 : weekday - 1
-  const currentDay = target.getDay()
-  let daysUntil = jsDay - currentDay
-  if (daysUntil < 0) daysUntil += 7
-  if (daysUntil === 0 && target.getTime() <= now.getTime()) daysUntil = 7
-  target.setDate(target.getDate() + daysUntil)
-  return target.getTime()
 }
 
 /** 取消单个提醒 */

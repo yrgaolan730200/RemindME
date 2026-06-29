@@ -112,7 +112,7 @@ export function AddTodoForm() {
     try {
       await addTodo({
         title,
-        dueDate: `${year}-${pad(month)}-${pad(safeDay)}`,
+        dueDate: timeReminderOn ? `${year}-${pad(month)}-${pad(safeDay)}` : undefined,
         dueTime: timeReminderOn ? `${pad(hour)}:${pad(minute)}:00` : undefined,
         reminderEnabled: timeReminderOn,
         repeatEnabled: repeatOn,

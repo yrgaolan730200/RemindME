@@ -5,55 +5,13 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getTodos } from "@/lib/todos"
-import type { Todo } from "@/lib/todos"
+import { getTimelineItems, dayKey } from "@/lib/timeline"
+import type { TimelineItem } from "@/lib/timeline"
 
 const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
 
-function dayKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-}
-
-interface TimelineItem {
-  dateKey: string
-  time: string
-  todoId: number
-  title: string
-  completed: boolean
-  todo: Todo
-  isRepeatOccurrence: boolean
-}
-
-/** 从重复提醒 todo 生成未来 30 天的虚拟时间线项 */
-function generateRepeatOccurrences(todo: Todo, fromDate: Date, daysAhead: number): TimelineItem[] {
-  const items: TimelineItem[] = []
-  if (!todo.repeatEnabled || !todo.repeatTime || !todo.repeatWeekdays || todo.repeatWeekdays.length === 0) {
-    return items
-  }
-
-  const time = todo.repeatTime.slice(0, 5)
-  for (let i = 0; i < daysAhead; i++) {
-    const d = new Date(fromDate)
-    d.setDate(d.getDate() + i)
-    // Capacitor weekday: 1=Sun…7=Sat; JS getDay(): 0=Sun…6=Sat
-    const jsDay = d.getDay()
-    const capacitorDay = jsDay === 0 ? 1 : jsDay + 1
-    if (todo.repeatWeekdays.includes(capacitorDay)) {
-      items.push({
-        dateKey: dayKey(d),
-        time,
-        todoId: todo.id,
-        title: todo.title,
-        completed: todo.completed,
-        todo,
-        isRepeatOccurrence: true,
-      })
-    }
-  }
-  return items
-}
-
 export default function HistoryPage() {
-  const [todos, setTodos] = useState<Todo[]>([])
+  const [todos, setTodos] = useState(getTodos)
 
   const loadTodos = useCallback(() => {
     setTodos(getTodos())
@@ -66,59 +24,10 @@ export default function HistoryPage() {
   const now = new Date()
   const todayKey = dayKey(now)
 
-  // 构建完整时间线：一次性提醒 + 重复提醒投影
-  const timelineItems = useMemo(() => {
-    const items: TimelineItem[] = []
-
-    for (const todo of todos) {
-      // 一次性提醒
-      if (todo.reminderEnabled && todo.dueDate) {
-        items.push({
-          dateKey: todo.dueDate,
-          time: todo.dueTime ? todo.dueTime.slice(0, 5) : "",
-          todoId: todo.id,
-          title: todo.title,
-          completed: todo.completed,
-          todo,
-          isRepeatOccurrence: false,
-        })
-      }
-
-      // 重复提醒投影（未来 30 天）
-      if (todo.repeatEnabled) {
-        items.push(...generateRepeatOccurrences(todo, now, 30))
-      }
-
-      // 普通待办（无提醒、无日期），仅当有 dueDate 时显示
-      if (!todo.reminderEnabled && !todo.repeatEnabled && todo.dueDate) {
-        items.push({
-          dateKey: todo.dueDate,
-          time: todo.dueTime ? todo.dueTime.slice(0, 5) : "",
-          todoId: todo.id,
-          title: todo.title,
-          completed: todo.completed,
-          todo,
-          isRepeatOccurrence: false,
-        })
-      }
-    }
-
-    // 按日期+时间升序，去重（同一天同一 todo 同一时间只保留一条）
-    const seen = new Set<string>()
-    const deduped: TimelineItem[] = []
-    for (const item of items.sort((a, b) => {
-      const dc = a.dateKey.localeCompare(b.dateKey)
-      if (dc !== 0) return dc
-      return a.time.localeCompare(b.time)
-    })) {
-      const dedupKey = `${item.dateKey}|${item.todoId}|${item.time}|${item.isRepeatOccurrence}`
-      if (!seen.has(dedupKey)) {
-        seen.add(dedupKey)
-        deduped.push(item)
-      }
-    }
-    return deduped
-  }, [todos, now])
+  const timelineItems = useMemo(
+    () => getTimelineItems(todos, now, 30),
+    [todos, now],
+  )
 
   // 按日期分组
   const groups = new Map<string, TimelineItem[]>()

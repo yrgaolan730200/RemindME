@@ -30,11 +30,51 @@ export interface Todo {
 
 const STORAGE_KEY = "remindme-todos"
 
+/** 兼容旧数据格式：将旧字段迁移到新字段 */
+function migrateTodo(raw: any): Todo {
+  const t: Todo = {
+    id: raw.id ?? 0,
+    title: raw.title ?? "",
+    completed: raw.completed ?? false,
+    createdAt: raw.createdAt ?? new Date().toISOString(),
+    notificationIds: raw.notificationIds ?? [],
+  }
+
+  // 新字段直接读取
+  if (typeof raw.reminderEnabled === "boolean") {
+    t.reminderEnabled = raw.reminderEnabled
+    t.dueDate = raw.dueDate || undefined
+    t.dueTime = raw.dueTime || undefined
+  } else if (raw.dueDate && raw.dueTime) {
+    // 旧数据：有 dueDate + dueTime → 推断为一次性提醒
+    t.reminderEnabled = true
+    t.dueDate = raw.dueDate
+    t.dueTime = raw.dueTime
+  }
+
+  // 重复提醒迁移
+  if (typeof raw.repeatEnabled === "boolean") {
+    t.repeatEnabled = raw.repeatEnabled
+    t.repeatWeekdays = raw.repeatWeekdays ?? []
+    t.repeatTime = raw.repeatTime || undefined
+  } else if (raw.repeat && raw.repeat !== "none") {
+    // 旧 repeat + repeatDays → 新字段
+    t.repeatEnabled = true
+    t.repeatWeekdays = raw.repeatDays ?? raw.repeatWeekdays ?? []
+    t.repeatTime = raw.dueTime || raw.repeatTime || undefined
+  }
+
+  return t
+}
+
 function readTodos(): Todo[] {
   if (typeof window === "undefined") return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.map(migrateTodo)
   } catch {
     return []
   }
@@ -124,11 +164,11 @@ export async function addTodo(input: {
     completed: false,
     createdAt: new Date().toISOString(),
     reminderEnabled: input.reminderEnabled ?? false,
-    dueDate: input.dueDate || "",
-    dueTime: input.dueTime || "",
+    dueDate: input.dueDate || undefined,
+    dueTime: input.dueTime || undefined,
     repeatEnabled: input.repeatEnabled ?? false,
     repeatWeekdays: input.repeatWeekdays ?? [],
-    repeatTime: input.repeatTime || "",
+    repeatTime: input.repeatTime || undefined,
     notificationIds: [...oneTimeIds, ...repeatIds],
   }
   todos.push(todo)
