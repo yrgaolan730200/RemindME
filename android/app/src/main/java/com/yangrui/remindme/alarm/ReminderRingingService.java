@@ -151,15 +151,13 @@ public class ReminderRingingService extends Service {
             this, id + 20000, deleteIntent, flags
         );
 
-        // Content intent (tap notification → open app + stop ringing)
-        Intent contentIntent = new Intent(this, com.yangrui.remindme.MainActivity.class);
-        contentIntent.setAction(Intent.ACTION_MAIN);
-        contentIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+        // Content intent (tap notification → stop ringing + open app)
+        Intent contentIntent = new Intent(this, ReminderStopReceiver.class);
+        contentIntent.setAction(ACTION_STOP_RINGING);
         contentIntent.putExtra("reminder_id", id);
-        contentIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent contentPendingIntent = PendingIntent.getActivity(
-            this, id + 30000, contentIntent,
-            flags | Intent.FLAG_ACTIVITY_NEW_TASK
+        contentIntent.putExtra("launch_app", true);
+        PendingIntent contentPendingIntent = PendingIntent.getBroadcast(
+            this, id + 30000, contentIntent, flags
         );
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)

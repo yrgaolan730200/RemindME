@@ -1,6 +1,6 @@
 // RemindME — 平台分治提醒调度（Android AlarmManager / iOS LocalNotifications / Web noop）
 
-import { Capacitor } from "@capacitor/core"
+import { Capacitor, registerPlugin } from "@capacitor/core"
 import { LocalNotifications } from "@capacitor/local-notifications"
 import { getNotificationSound, getRingtone } from "@/lib/settings"
 
@@ -19,24 +19,14 @@ interface ReminderAlarmNative {
   openExactAlarmSettings(): Promise<void>
 }
 
+const ReminderAlarm = registerPlugin<ReminderAlarmNative>("ReminderAlarm")
+
 function getNativePlugin(): ReminderAlarmNative | null {
   try {
-    return (Capacitor as any).getPlatform() !== "web"
-      ? (window as any).Capacitor?.getPlatform() !== undefined
-        ? {
-            scheduleReminderAlarm: (o: any) =>
-              (window as any).Capacitor.Plugins.ReminderAlarm.scheduleReminderAlarm(o),
-            cancelReminderAlarm: (o: any) =>
-              (window as any).Capacitor.Plugins.ReminderAlarm.cancelReminderAlarm(o),
-            stopRinging: () =>
-              (window as any).Capacitor.Plugins.ReminderAlarm.stopRinging(),
-            canScheduleExactAlarms: () =>
-              (window as any).Capacitor.Plugins.ReminderAlarm.canScheduleExactAlarms(),
-            openExactAlarmSettings: () =>
-              (window as any).Capacitor.Plugins.ReminderAlarm.openExactAlarmSettings(),
-          }
-        : null
-      : null
+    const platform = Capacitor.getPlatform()
+    if (platform === "web") return null
+    // 测试是否已实现（调用轻量方法）
+    return ReminderAlarm
   } catch {
     return null
   }
@@ -85,10 +75,18 @@ export async function scheduleReminder(params: ReminderParams): Promise<number |
   const platform = Capacitor.getPlatform()
   const fireAt = parseFireAt(params.dueDate, params.dueTime)
 
+  // 通知权限（Android 13+ / iOS）
+  await LocalNotifications.requestPermissions().catch(() => {})
+
   // Android: 使用原生 AlarmManager 插件
   if (platform === "android") {
     const plugin = getNativePlugin()
     if (plugin) {
+      // 检查 exact alarm 权限
+      const canSchedule = await checkExactAlarmPermission()
+      if (!canSchedule) {
+        throw new Error("需要「闹钟和提醒」权限才能设置定时提醒，请在系统设置中开启")
+      }
       await plugin.scheduleReminderAlarm({
         id: params.id,
         title: "RemindME",
@@ -102,7 +100,6 @@ export async function scheduleReminder(params: ReminderParams): Promise<number |
 
   // iOS / fallback: LocalNotifications
   const sound = getNotificationSound()
-  await LocalNotifications.requestPermissions()
   await LocalNotifications.schedule({
     notifications: [
       {
@@ -124,13 +121,19 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
   const sound = getNotificationSound()
   const ids: number[] = []
 
+  // 通知权限
+  await LocalNotifications.requestPermissions().catch(() => {})
+
   // Android: 分别注册多个 AlarmManager 闹钟
   if (platform === "android") {
     const plugin = getNativePlugin()
     if (plugin) {
+      const canSchedule = await checkExactAlarmPermission()
+      if (!canSchedule) {
+        throw new Error("需要「闹钟和提醒」权限才能设置定时提醒，请在系统设置中开启")
+      }
       for (const wd of params.weekdays) {
         const nid = makeNotificationId()
-        // 使用第一个发生日作为 fireAt（近似），后续由 AlarmManager 负责
         const firstFire = nextFireDate(wd, hour, minute)
         try {
           await plugin.scheduleReminderAlarm({
@@ -144,6 +147,9 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
         } catch {
           // 单个失败不阻断其他
         }
+      }
+      if (ids.length === 0) {
+        throw new Error("重复提醒注册失败，请检查闹钟权限")
       }
       return ids
     }
