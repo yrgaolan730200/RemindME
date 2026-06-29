@@ -50,20 +50,38 @@ export interface ReminderParams {
   dueTime: string
 }
 
+export interface RepeatReminderParams {
+  baseId: number
+  title: string
+  body: string
+  dueDate: string
+  dueTime: string
+  weekdays: number[] // Capacitor weekday: 1=Sun, 2=Mon, …, 7=Sat
+}
+
 function parseFireAt(dueDate: string, dueTime: string): number {
   const [y, m, d] = dueDate.split("-").map(Number)
   const [hh, mm] = dueTime.split(":").map(Number)
   return new Date(y, m - 1, d, hh, mm, 0).getTime()
 }
 
+function parseTime(dueTime: string): { hour: number; minute: number } {
+  const [h, m] = dueTime.split(":").map(Number)
+  return { hour: h, minute: m }
+}
+
 function getRawSoundName(): string {
   const ringtone = getRingtone()
-  // default → "alarm" as fallback raw resource
   return ringtone === "default" ? "alarm" : ringtone
 }
 
-/** 调度提醒 — Android / iOS 自动分流 */
-export async function scheduleReminder(params: ReminderParams): Promise<void> {
+/** 生成稳定的通知 ID：baseId * 100 + weekday（确保不同 weekday 不冲突） */
+function makeNotificationId(baseId: number, weekday: number): number {
+  return baseId * 100 + weekday
+}
+
+/** 调度单次提醒 — 返回通知 ID */
+export async function scheduleReminder(params: ReminderParams): Promise<number | null> {
   const platform = Capacitor.getPlatform()
   const fireAt = parseFireAt(params.dueDate, params.dueTime)
 
@@ -71,41 +89,101 @@ export async function scheduleReminder(params: ReminderParams): Promise<void> {
   if (platform === "android") {
     const plugin = getNativePlugin()
     if (plugin) {
-      const soundName = getRawSoundName()
       await plugin.scheduleReminderAlarm({
         id: params.id,
         title: "RemindME",
-        body: params.title,
+        body: params.body,
         fireAt,
-        soundName,
+        soundName: getRawSoundName(),
       })
-      return
+      return params.id
     }
-    // Fallback: 插件不可用时继续用 LocalNotifications
   }
 
-  // iOS: 使用 LocalNotifications 调度
-  if (platform === "ios") {
-    const sound = getNotificationSound()
-    await LocalNotifications.requestPermissions()
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          title: "RemindME",
-          body: params.title,
-          id: params.id,
-          schedule: { at: new Date(fireAt) },
-          ...(sound ? { sound } : {}),
-        },
-      ],
-    })
-    return
-  }
-
-  // Web: no-op
+  // iOS / fallback: LocalNotifications
+  const sound = getNotificationSound()
+  await LocalNotifications.requestPermissions()
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        title: "RemindME",
+        body: params.body,
+        id: params.id,
+        schedule: { at: new Date(fireAt) },
+        ...(sound ? { sound } : {}),
+      },
+    ],
+  })
+  return params.id
 }
 
-/** 取消提醒 */
+/** 调度重复提醒 — 为每个 weekday 生成独立通知，返回所有通知 ID 数组 */
+export async function scheduleRepeatReminders(params: RepeatReminderParams): Promise<number[]> {
+  const { hour, minute } = parseTime(params.dueTime)
+  const platform = Capacitor.getPlatform()
+  const sound = getNotificationSound()
+  const ids: number[] = []
+
+  // Android: 分别注册多个 AlarmManager 闹钟
+  if (platform === "android") {
+    const plugin = getNativePlugin()
+    if (plugin) {
+      for (const wd of params.weekdays) {
+        const nid = makeNotificationId(params.baseId, wd)
+        // 使用第一个发生日作为 fireAt（近似），后续由 AlarmManager 负责
+        const firstFire = nextFireDate(wd, hour, minute)
+        try {
+          await plugin.scheduleReminderAlarm({
+            id: nid,
+            title: "RemindME",
+            body: params.body,
+            fireAt: firstFire,
+            soundName: getRawSoundName(),
+          })
+          ids.push(nid)
+        } catch {
+          // 单个失败不阻断其他
+        }
+      }
+      return ids
+    }
+  }
+
+  // iOS / fallback: 为每个 weekday 创建独立 LocalNotification
+  const notifications = params.weekdays.map((wd) => {
+    const nid = makeNotificationId(params.baseId, wd)
+    ids.push(nid)
+    return {
+      title: "RemindME",
+      body: params.body,
+      id: nid,
+      schedule: { on: { weekday: wd, hour, minute } },
+      ...(sound ? { sound } : {}),
+    }
+  })
+
+  await LocalNotifications.requestPermissions()
+  await LocalNotifications.schedule({ notifications })
+  return ids
+}
+
+/** 计算下一个指定 weekday+time 的时间戳（Android AlarmManager 用） */
+function nextFireDate(weekday: number, hour: number, minute: number): number {
+  const now = new Date()
+  const target = new Date(now)
+  target.setHours(hour, minute, 0, 0)
+
+  // Capacitor weekday: 1=Sun…7=Sat; JS getDay(): 0=Sun…6=Sat
+  const jsDay = weekday === 1 ? 0 : weekday - 1
+  const currentDay = target.getDay()
+  let daysUntil = jsDay - currentDay
+  if (daysUntil < 0) daysUntil += 7
+  if (daysUntil === 0 && target.getTime() <= now.getTime()) daysUntil = 7
+  target.setDate(target.getDate() + daysUntil)
+  return target.getTime()
+}
+
+/** 取消单个提醒 */
 export async function cancelReminder(id: number): Promise<void> {
   const platform = Capacitor.getPlatform()
 
@@ -117,8 +195,26 @@ export async function cancelReminder(id: number): Promise<void> {
     }
   }
 
-  // iOS / Web fallback
   await LocalNotifications.cancel({ notifications: [{ id }] }).catch(() => {})
+}
+
+/** 批量取消提醒 */
+export async function cancelReminders(ids: number[]): Promise<void> {
+  const platform = Capacitor.getPlatform()
+
+  if (platform === "android") {
+    const plugin = getNativePlugin()
+    if (plugin) {
+      for (const id of ids) {
+        try { await plugin.cancelReminderAlarm({ id }) } catch {}
+      }
+      return
+    }
+  }
+
+  await LocalNotifications.cancel({
+    notifications: ids.map((id) => ({ id })),
+  }).catch(() => {})
 }
 
 /** 停止当前响铃 */

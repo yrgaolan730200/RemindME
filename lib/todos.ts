@@ -1,6 +1,13 @@
 // Client-side todo storage using localStorage + platform-native reminders
 
-import { scheduleReminder, cancelReminder } from "@/lib/reminderScheduler"
+import {
+  scheduleReminder,
+  scheduleRepeatReminders,
+  cancelReminder,
+  cancelReminders,
+} from "@/lib/reminderScheduler"
+
+export type RepeatMode = "none" | "workdays" | "weekends" | "mwf" | "tts" | "custom"
 
 export interface Todo {
   id: number
@@ -9,6 +16,9 @@ export interface Todo {
   dueTime: string
   completed: boolean
   createdAt: string
+  repeat?: RepeatMode
+  repeatDays?: number[] // Capacitor weekday: 1=Sun, 2=Mon, …, 7=Sat
+  notificationIds?: number[]
 }
 
 const STORAGE_KEY = "remindme-todos"
@@ -39,6 +49,8 @@ export async function addTodo(input: {
   title: string
   dueDate: string
   dueTime?: string
+  repeat?: RepeatMode
+  repeatDays?: number[]
 }): Promise<Todo> {
   const title = input.title.trim()
   if (!title) throw new Error("请输入待办名称")
@@ -53,19 +65,41 @@ export async function addTodo(input: {
     dueTime: input.dueTime ?? "",
     completed: false,
     createdAt: new Date().toISOString(),
+    repeat: input.repeat ?? "none",
+    repeatDays: input.repeatDays ?? [],
+    notificationIds: [],
   }
   todos.push(todo)
   writeTodos(todos)
 
-  // 用户选了具体时间 → 平台分治调度系统级提醒
+  // 用户选了具体时间 → 平台分治调度
   if (input.dueTime) {
-    await scheduleReminder({
-      id: todo.id,
-      title: todo.title,
-      body: todo.title,
-      dueDate: input.dueDate,
-      dueTime: input.dueTime,
-    })
+    const hasRepeat = input.repeat && input.repeat !== "none" && input.repeatDays && input.repeatDays.length > 0
+
+    if (hasRepeat) {
+      todo.notificationIds = await scheduleRepeatReminders({
+        baseId: todo.id,
+        title: todo.title,
+        body: todo.title,
+        dueDate: input.dueDate,
+        dueTime: input.dueTime,
+        weekdays: input.repeatDays!,
+      })
+      // 回写 notificationIds 到 localStorage
+      writeTodos(todos.map((t) => (t.id === todo.id ? todo : t)))
+    } else {
+      const nid = await scheduleReminder({
+        id: todo.id,
+        title: todo.title,
+        body: todo.title,
+        dueDate: input.dueDate,
+        dueTime: input.dueTime,
+      })
+      if (nid != null) {
+        todo.notificationIds = [nid]
+        writeTodos(todos.map((t) => (t.id === todo.id ? todo : t)))
+      }
+    }
   }
 
   return todo
@@ -79,14 +113,27 @@ export function toggleTodo(id: number, completed: boolean): void {
     writeTodos(todos)
 
     if (completed) {
-      cancelReminder(id)
+      const ids = todos[index].notificationIds
+      if (ids && ids.length > 0) {
+        cancelReminders(ids)
+      } else {
+        cancelReminder(id)
+      }
     }
   }
 }
 
 export function deleteTodo(id: number): void {
   const todos = readTodos()
+  const todo = todos.find((t) => t.id === id)
   writeTodos(todos.filter((t) => t.id !== id))
 
-  cancelReminder(id)
+  if (todo) {
+    const ids = todo.notificationIds
+    if (ids && ids.length > 0) {
+      cancelReminders(ids)
+    } else {
+      cancelReminder(id)
+    }
+  }
 }
