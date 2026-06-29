@@ -23,12 +23,16 @@ export default function HistoryPage() {
     loadTodos()
   }
 
-  function handleToggle(item: TimelineItem) {
+  async function handleToggle(item: TimelineItem) {
     if (item.isRepeatOccurrence && !item.completed) {
       if (!window.confirm("这是重复待办，完成后将停止整个重复提醒，是否继续？")) return
     }
-    toggleTodo(item.todoId, !item.completed)
-    loadTodos()
+    try {
+      await toggleTodo(item.todoId, !item.completed)
+      loadTodos()
+    } catch (e) {
+      console.error("toggle todo failed in history", { todoId: item.todoId, error: e })
+    }
   }
 
   useEffect(() => {

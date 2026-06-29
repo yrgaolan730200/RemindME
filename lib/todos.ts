@@ -177,20 +177,26 @@ export async function addTodo(input: {
   return todo
 }
 
-export function toggleTodo(id: number, completed: boolean): void {
+export async function toggleTodo(id: number, completed: boolean): Promise<void> {
   const todos = readTodos()
   const index = todos.findIndex((t) => t.id === id)
-  if (index !== -1) {
-    todos[index].completed = completed
-    writeTodos(todos)
+  if (index === -1) return
 
-    if (completed) {
-      const ids = todos[index].notificationIds
-      if (ids && ids.length > 0) {
-        cancelReminders(ids)
+  // 1. 先更新本地状态
+  todos[index].completed = completed
+  writeTodos(todos)
+
+  // 2. 标记完成 → best-effort 取消通知（失败仅打日志，不回滚）
+  if (completed) {
+    const ids = Array.isArray(todos[index].notificationIds) ? todos[index].notificationIds : []
+    try {
+      if (ids.length > 0) {
+        await cancelReminders(ids)
       } else {
-        cancelReminder(id)
+        await cancelReminder(id)
       }
+    } catch (e) {
+      console.error("cancel reminders after completing todo failed", { todoId: id, notificationIds: ids, error: e })
     }
   }
 }
@@ -200,12 +206,17 @@ export function deleteTodo(id: number): void {
   const todo = todos.find((t) => t.id === id)
   writeTodos(todos.filter((t) => t.id !== id))
 
+  // 删除时取消通知（fire-and-forget，best-effort）
   if (todo) {
-    const ids = todo.notificationIds
-    if (ids && ids.length > 0) {
-      cancelReminders(ids)
+    const ids = Array.isArray(todo.notificationIds) ? todo.notificationIds : []
+    if (ids.length > 0) {
+      cancelReminders(ids).catch((e) =>
+        console.error("cancel reminders after delete failed", { todoId: id, notificationIds: ids, error: e }),
+      )
     } else {
-      cancelReminder(id)
+      cancelReminder(id).catch((e) =>
+        console.error("cancel reminder after delete failed", { todoId: id, error: e }),
+      )
     }
   }
 }

@@ -183,22 +183,33 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
 // ═══════════════════════════════ 取消 ─═════════════════════════════
 
 export async function cancelReminder(id: number): Promise<void> {
-  await ensureCapacitor()
+  try { await ensureCapacitor() } catch { return }
   const platform = getPlatform()
   if (platform === "android") {
     const p = getNativePlugin()
-    if (p) { await p.cancelReminderAlarm({ id }); return }
+    if (p) { try { await p.cancelReminderAlarm({ id }) } catch (e) { console.error("cancelReminder android failed", { id, error: e }) } return }
   }
-  if (_capLN) { await _capLN.cancel({ notifications: [{ id }] }).catch(() => {}) }
+  if (_capLN) { await _capLN.cancel({ notifications: [{ id }] }).catch((e: any) => console.error("cancelReminder ios failed", { id, error: e })) }
 }
 
 export async function cancelReminders(ids: number[]): Promise<void> {
+  if (!Array.isArray(ids) || ids.length === 0) return
+  try { await ensureCapacitor() } catch { return }
   const platform = getPlatform()
+
   if (platform === "android") {
     const p = getNativePlugin()
-    if (p) { for (const id of ids) { try { await p.cancelReminderAlarm({ id }) } catch {} } return }
+    if (p) {
+      for (const id of ids) {
+        try { await p.cancelReminderAlarm({ id }) } catch (e) { console.error("cancelReminders android failed", { id, error: e }) }
+      }
+    }
+    return
   }
-  if (_capLN) { await _capLN.cancel({ notifications: ids.map((id) => ({ id })) }).catch(() => {}) }
+
+  if (_capLN) {
+    await _capLN.cancel({ notifications: ids.map((id) => ({ id })) }).catch((e: any) => console.error("cancelReminders ios failed", { ids, error: e }))
+  }
 }
 
 // ═══════════════════════════════ 其他 ─═════════════════════════════

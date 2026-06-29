@@ -17,12 +17,16 @@ export function TodoItem({ todo, onUpdate, showDelete = false, isRepeatOccurrenc
   const [deleting, setDeleting] = useState(false)
   const time = todo.dueTime ? todo.dueTime.slice(0, 5) : todo.repeatTime ? todo.repeatTime.slice(0, 5) : ""
 
-  function handleToggle() {
+  async function handleToggle() {
     if (isRepeatOccurrence && !todo.completed) {
       if (!window.confirm("这是重复待办，完成后将停止整个重复提醒，是否继续？")) return
     }
-    toggleTodo(todo.id, !todo.completed)
-    onUpdate()
+    try {
+      await toggleTodo(todo.id, !todo.completed)
+      onUpdate()
+    } catch (e) {
+      console.error("toggle todo failed", { todoId: todo.id, error: e })
+    }
   }
 
   function handleDelete() {
