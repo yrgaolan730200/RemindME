@@ -191,7 +191,13 @@ export function AddTodoForm() {
                 aria-checked={isTimeReminderEnabled}
                 onClick={(e) => {
                   e.preventDefault()
-                  setIsTimeReminderEnabled(!isTimeReminderEnabled)
+                  const next = !isTimeReminderEnabled
+                  setIsTimeReminderEnabled(next)
+                  // 关闭时间时同步关闭重复
+                  if (!next) {
+                    setRepeatEnabled(false)
+                    setRepeatMode("none")
+                  }
                 }}
                 className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors ${
                   isTimeReminderEnabled ? "bg-background/20" : "bg-muted-foreground/30"
@@ -217,109 +223,113 @@ export function AddTodoForm() {
             )}
           </div>
 
-          {/* 重复提醒（仅在开启时间提醒后显示） */}
-          {isTimeReminderEnabled && (
-            <div className="flex flex-col gap-2">
-              <span className="text-xs uppercase tracking-widest text-muted-foreground">重复</span>
+          {/* 重复提醒 — 独立区块，始终可见 */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs uppercase tracking-widest text-muted-foreground">重复</span>
 
-              <label
-                className={`flex items-center justify-between rounded-2xl border px-5 py-4 transition-colors cursor-pointer ${
-                  repeatEnabled
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border text-foreground hover:bg-muted"
+            <label
+              className={`flex items-center justify-between rounded-2xl border px-5 py-4 transition-colors cursor-pointer ${
+                repeatEnabled
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-foreground hover:bg-muted"
+              }`}
+            >
+              <span className="text-base">重复提醒</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={repeatEnabled}
+                onClick={(e) => {
+                  e.preventDefault()
+                  const next = !repeatEnabled
+                  setRepeatEnabled(next)
+                  if (next) {
+                    // 开启重复必须同时开启时间
+                    if (!isTimeReminderEnabled) setIsTimeReminderEnabled(true)
+                    if (repeatMode === "none") setRepeatMode("workdays")
+                  } else {
+                    setRepeatMode("none")
+                  }
+                }}
+                className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors ${
+                  repeatEnabled ? "bg-background/20" : "bg-muted-foreground/30"
                 }`}
               >
-                <span className="text-base">重复提醒</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={repeatEnabled}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setRepeatEnabled(!repeatEnabled)
-                    if (!repeatEnabled && repeatMode === "none") setRepeatMode("workdays")
-                    if (repeatEnabled) setRepeatMode("none")
-                  }}
-                  className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors ${
-                    repeatEnabled ? "bg-background/20" : "bg-muted-foreground/30"
+                <span
+                  className={`inline-block h-4 w-4 rounded-full shadow transition-transform ${
+                    repeatEnabled
+                      ? "translate-x-5 bg-background"
+                      : "translate-x-1 bg-background"
                   }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 rounded-full shadow transition-transform ${
-                      repeatEnabled
-                        ? "translate-x-5 bg-background"
-                        : "translate-x-1 bg-background"
-                    }`}
-                  />
-                </button>
-              </label>
+                />
+              </button>
+            </label>
 
-              {repeatEnabled && (
-                <>
-                  {/* 重复模式下拉 */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setRepeatOpen(!repeatOpen)}
-                      className="flex w-full items-center justify-between rounded-2xl border border-border px-5 py-4 text-left text-foreground transition-colors hover:bg-muted"
-                    >
-                      <span className="text-base">{getRepeatLabel()}</span>
-                      <ChevronDown
-                        className={`h-4 w-4 text-muted-foreground transition-transform ${
-                          repeatOpen ? "rotate-180" : ""
-                        }`}
-                        strokeWidth={1.5}
-                      />
-                    </button>
+            {repeatEnabled && (
+              <>
+                {/* 重复模式下拉 */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setRepeatOpen(!repeatOpen)}
+                    className="flex w-full items-center justify-between rounded-2xl border border-border px-5 py-4 text-left text-foreground transition-colors hover:bg-muted"
+                  >
+                    <span className="text-base">{getRepeatLabel()}</span>
+                    <ChevronDown
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${
+                        repeatOpen ? "rotate-180" : ""
+                      }`}
+                      strokeWidth={1.5}
+                    />
+                  </button>
 
-                    {repeatOpen && (
-                      <div className="absolute inset-x-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
-                        {REPEAT_OPTIONS.map((opt) => {
-                          const selected = repeatMode === opt.value
-                          return (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              onClick={() => handleRepeatModeSelect(opt.value)}
-                              className={`flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-muted ${
-                                selected ? "text-foreground" : "text-muted-foreground"
-                              }`}
-                            >
-                              <span className="text-sm">{opt.label}</span>
-                              {selected && <Check className="h-4 w-4" strokeWidth={1.5} />}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 自定义星期选择 */}
-                  {repeatMode === "custom" && (
-                    <div className="flex items-center justify-center gap-2 py-2">
-                      {WEEKDAY_KEYS.map((wd) => {
-                        const active = customDays.includes(wd)
+                  {repeatOpen && (
+                    <div className="absolute inset-x-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-border bg-background shadow-lg">
+                      {REPEAT_OPTIONS.map((opt) => {
+                        const selected = repeatMode === opt.value
                         return (
                           <button
-                            key={wd}
+                            key={opt.value}
                             type="button"
-                            onClick={() => toggleCustomDay(wd)}
-                            className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition-colors ${
-                              active
-                                ? "bg-foreground text-background"
-                                : "text-muted-foreground hover:bg-muted"
+                            onClick={() => handleRepeatModeSelect(opt.value)}
+                            className={`flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-muted ${
+                              selected ? "text-foreground" : "text-muted-foreground"
                             }`}
                           >
-                            {WEEKDAY_LABELS[wd - 1]}
+                            <span className="text-sm">{opt.label}</span>
+                            {selected && <Check className="h-4 w-4" strokeWidth={1.5} />}
                           </button>
                         )
                       })}
                     </div>
                   )}
-                </>
-              )}
-            </div>
-          )}
+                </div>
+
+                {/* 自定义星期选择 */}
+                {repeatMode === "custom" && (
+                  <div className="flex items-center justify-center gap-2 py-2">
+                    {WEEKDAY_KEYS.map((wd) => {
+                      const active = customDays.includes(wd)
+                      return (
+                        <button
+                          key={wd}
+                          type="button"
+                          onClick={() => toggleCustomDay(wd)}
+                          className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition-colors ${
+                            active
+                              ? "bg-foreground text-background"
+                              : "text-muted-foreground hover:bg-muted"
+                          }`}
+                        >
+                          {WEEKDAY_LABELS[wd - 1]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           {/* Error */}
           {error && <p className="text-center text-sm text-destructive">{error}</p>}

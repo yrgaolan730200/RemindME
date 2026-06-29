@@ -58,8 +58,39 @@ export async function addTodo(input: {
 
   const todos = readTodos()
   const maxId = todos.reduce((max, t) => Math.max(max, t.id), 0)
+  const newId = maxId + 1
+
+  // 必须先调度通知，成功后才写入本地存储（原子性保障）
+  let notificationIds: number[] = []
+  if (input.dueTime) {
+    const hasRepeat =
+      input.repeat && input.repeat !== "none" &&
+      input.repeatDays && input.repeatDays.length > 0
+
+    if (hasRepeat) {
+      notificationIds = await scheduleRepeatReminders({
+        baseId: newId,
+        title,
+        body: title,
+        dueDate: input.dueDate,
+        dueTime: input.dueTime,
+        weekdays: input.repeatDays!,
+      })
+    } else {
+      const nid = await scheduleReminder({
+        id: newId,
+        title,
+        body: title,
+        dueDate: input.dueDate,
+        dueTime: input.dueTime,
+      })
+      if (nid != null) notificationIds = [nid]
+    }
+  }
+
+  // 调度成功后才写 localStorage
   const todo: Todo = {
-    id: maxId + 1,
+    id: newId,
     title,
     dueDate: input.dueDate,
     dueTime: input.dueTime ?? "",
@@ -67,40 +98,10 @@ export async function addTodo(input: {
     createdAt: new Date().toISOString(),
     repeat: input.repeat ?? "none",
     repeatDays: input.repeatDays ?? [],
-    notificationIds: [],
+    notificationIds,
   }
   todos.push(todo)
   writeTodos(todos)
-
-  // 用户选了具体时间 → 平台分治调度
-  if (input.dueTime) {
-    const hasRepeat = input.repeat && input.repeat !== "none" && input.repeatDays && input.repeatDays.length > 0
-
-    if (hasRepeat) {
-      todo.notificationIds = await scheduleRepeatReminders({
-        baseId: todo.id,
-        title: todo.title,
-        body: todo.title,
-        dueDate: input.dueDate,
-        dueTime: input.dueTime,
-        weekdays: input.repeatDays!,
-      })
-      // 回写 notificationIds 到 localStorage
-      writeTodos(todos.map((t) => (t.id === todo.id ? todo : t)))
-    } else {
-      const nid = await scheduleReminder({
-        id: todo.id,
-        title: todo.title,
-        body: todo.title,
-        dueDate: input.dueDate,
-        dueTime: input.dueTime,
-      })
-      if (nid != null) {
-        todo.notificationIds = [nid]
-        writeTodos(todos.map((t) => (t.id === todo.id ? todo : t)))
-      }
-    }
-  }
 
   return todo
 }

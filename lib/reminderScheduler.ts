@@ -75,9 +75,9 @@ function getRawSoundName(): string {
   return ringtone === "default" ? "alarm" : ringtone
 }
 
-/** 生成稳定的通知 ID：baseId * 100 + weekday（确保不同 weekday 不冲突） */
-function makeNotificationId(baseId: number, weekday: number): number {
-  return baseId * 100 + weekday
+/** 生成安全的 32 位正整数通知 ID（不依赖 baseId 乘法，避免溢出） */
+function makeNotificationId(): number {
+  return Math.floor(Math.random() * 2000000000)
 }
 
 /** 调度单次提醒 — 返回通知 ID */
@@ -129,7 +129,7 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
     const plugin = getNativePlugin()
     if (plugin) {
       for (const wd of params.weekdays) {
-        const nid = makeNotificationId(params.baseId, wd)
+        const nid = makeNotificationId()
         // 使用第一个发生日作为 fireAt（近似），后续由 AlarmManager 负责
         const firstFire = nextFireDate(wd, hour, minute)
         try {
@@ -151,7 +151,7 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
 
   // iOS / fallback: 为每个 weekday 创建独立 LocalNotification
   const notifications = params.weekdays.map((wd) => {
-    const nid = makeNotificationId(params.baseId, wd)
+    const nid = makeNotificationId()
     ids.push(nid)
     return {
       title: "RemindME",
