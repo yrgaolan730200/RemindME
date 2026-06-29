@@ -157,18 +157,6 @@ export function AddTodoForm() {
             />
           </div>
 
-          {/* 日期 */}
-          <div className="flex flex-col gap-2">
-            <span className="text-xs uppercase tracking-widest text-muted-foreground">日期</span>
-            <WheelPicker
-              columns={[
-                { items: years, value: year, onChange: setYear, ariaLabel: "年" },
-                { items: months, value: month, onChange: setMonth, ariaLabel: "月" },
-                { items: daysMemo, value: safeDay, onChange: setDay, ariaLabel: "日" },
-              ]}
-            />
-          </div>
-
           {/* ═══ 一次性时间提醒（独立开关）═══ */}
           <div className="flex flex-col gap-2">
             <span className="text-xs uppercase tracking-widest text-muted-foreground">一次性提醒</span>
@@ -193,12 +181,30 @@ export function AddTodoForm() {
             </label>
 
             {timeReminderOn && (
-              <WheelPicker
-                columns={[
-                  { items: hoursArr, value: hour, onChange: setHour, ariaLabel: "时" },
-                  { items: minutesArr, value: minute, onChange: setMinute, ariaLabel: "分" },
-                ]}
-              />
+              <>
+                {/* 日期选择器：仅一次性提醒需要 */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-muted-foreground">选择日期</span>
+                  <WheelPicker
+                    columns={[
+                      { items: years, value: year, onChange: setYear, ariaLabel: "年" },
+                      { items: months, value: month, onChange: setMonth, ariaLabel: "月" },
+                      { items: daysMemo, value: safeDay, onChange: setDay, ariaLabel: "日" },
+                    ]}
+                  />
+                </div>
+
+                {/* 一次性提醒时间 */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-muted-foreground">提醒时间</span>
+                  <WheelPicker
+                    columns={[
+                      { items: hoursArr, value: hour, onChange: setHour, ariaLabel: "时" },
+                      { items: minutesArr, value: minute, onChange: setMinute, ariaLabel: "分" },
+                    ]}
+                  />
+                </div>
+              </>
             )}
           </div>
 
@@ -235,12 +241,15 @@ export function AddTodoForm() {
             {repeatOn && (
               <>
                 {/* 重复提醒时间 */}
-                <WheelPicker
-                  columns={[
-                    { items: hoursArr, value: repeatHour, onChange: setRepeatHour, ariaLabel: "重复时" },
-                    { items: minutesArr, value: repeatMinute, onChange: setRepeatMinute, ariaLabel: "重复分" },
-                  ]}
-                />
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-muted-foreground">每天/每周几点提醒</span>
+                  <WheelPicker
+                    columns={[
+                      { items: hoursArr, value: repeatHour, onChange: setRepeatHour, ariaLabel: "重复时" },
+                      { items: minutesArr, value: repeatMinute, onChange: setRepeatMinute, ariaLabel: "重复分" },
+                    ]}
+                  />
+                </div>
 
                 {/* 重复模式下拉 */}
                 <div className="relative">
