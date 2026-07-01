@@ -345,14 +345,16 @@ export function AddTodoForm() {
         </div>
       </div>
 
-      {/* Sticky save button */}
-      <button
-        type="button" onClick={handleSubmit} disabled={saving}
-        className="shrink-0 w-full rounded-full bg-primary py-3.5 text-sm font-medium tracking-wide text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-        style={{ paddingBottom: "max(calc(env(safe-area-inset-bottom, 24px) + 0.875rem), 0.875rem)" }}
-      >
-        {saving ? "保存中…" : "保存待办"}
-      </button>
+      {/* Sticky save button — 用独立容器确保宽度与内容一致 */}
+      <div className="shrink-0 w-full pb-[max(env(safe-area-inset-bottom),24px)] pt-4 bg-background">
+        <button
+          type="button" onClick={handleSubmit} disabled={saving}
+          className="w-full rounded-full bg-primary py-3.5 text-sm font-medium tracking-wide text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          style={{ margin: "0 auto" }}
+        >
+          {saving ? "保存中…" : "保存待办"}
+        </button>
+      </div>
     </div>
   )
 }

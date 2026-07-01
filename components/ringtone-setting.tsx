@@ -20,19 +20,24 @@ export function RingtoneSetting() {
   const [ringtone, setRingtoneState] = useState<RingtoneId>(getRingtone)
   const [vibration, setVibrationState] = useState(getVibrationEnabled)
   const [open, setOpen] = useState(false)
-  const { previewSound } = useSoundPreview()
+  const { previewSound, stopPreview } = useSoundPreview()
 
   const current = RINGTONE_OPTIONS.find((r) => r.id === ringtone) ?? RINGTONE_OPTIONS[0]
 
   function selectRingtone(id: RingtoneId) {
     setRingtoneState(id)
     setRingtone(id)
+    // 试听失败绝不抛异常（catch 已内置在 useSoundPreview 中）
     previewSound(id)
-    setOpen(false)
-    // 触觉反馈
+    // 不关闭列表，方便用户试听多个
     if (Capacitor.isNativePlatform()) {
       Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {})
     }
+  }
+
+  function closePicker() {
+    stopPreview()
+    setOpen(false)
   }
 
   function toggleVibration() {
@@ -72,7 +77,10 @@ export function RingtoneSetting() {
       <div className="relative">
         <button
           type="button"
-          onClick={() => setOpen(!open)}
+          onClick={() => {
+            if (open) stopPreview()
+            setOpen(!open)
+          }}
           className="flex w-full items-center justify-between rounded-2xl border border-border px-5 py-4 text-left transition-colors hover:bg-muted"
         >
           <div className="flex flex-col gap-0.5">
@@ -108,6 +116,14 @@ export function RingtoneSetting() {
                 </button>
               )
             })}
+            {/* 底部确认按钮 */}
+            <button
+              type="button"
+              onClick={closePicker}
+              className="w-full border-t border-border px-5 py-3.5 text-center text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              完成
+            </button>
           </div>
         )}
       </div>
