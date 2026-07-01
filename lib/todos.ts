@@ -23,6 +23,9 @@ export interface Todo {
   repeatWeekdays?: number[]  // Capacitor: 1=Sun, 2=Mon, …, 7=Sat
   repeatTime?: string        // "09:00:00"
 
+  // 用户跳过/删除的重复 occurrence 日期
+  repeatSkipDates?: string[] // ["2026-07-01", ...]
+
   notificationIds?: number[]
 }
 
@@ -55,10 +58,12 @@ function migrateTodo(raw: any): Todo {
     t.repeatEnabled = raw.repeatEnabled
     t.repeatWeekdays = Array.isArray(raw.repeatWeekdays) ? raw.repeatWeekdays : []
     t.repeatTime = raw.repeatTime || undefined
+    t.repeatSkipDates = Array.isArray(raw.repeatSkipDates) ? raw.repeatSkipDates : []
   } else if (raw.repeat && raw.repeat !== "none") {
     t.repeatEnabled = true
     t.repeatWeekdays = Array.isArray(raw.repeatDays) ? raw.repeatDays : Array.isArray(raw.repeatWeekdays) ? raw.repeatWeekdays : []
     t.repeatTime = raw.dueTime || raw.repeatTime || undefined
+    t.repeatSkipDates = Array.isArray(raw.repeatSkipDates) ? raw.repeatSkipDates : []
   }
 
   return t
@@ -188,4 +193,19 @@ export function deleteTodo(id: number): void {
   if (!Number.isFinite(id)) return
   const todos = readTodos()
   writeTodos(todos.filter((t) => t.id !== id))
+}
+
+/** 跳过某一天重复 occurrence（不删除原始 todo） */
+export function skipRepeatOccurrence(todoId: number, dateKey: string): void {
+  if (!Number.isFinite(todoId) || !dateKey) return
+  const todos = readTodos()
+  const index = todos.findIndex((t) => t.id === todoId)
+  if (index === -1) return
+  const todo = todos[index]
+  if (!todo.repeatEnabled) return
+
+  const skipSet = new Set(todo.repeatSkipDates ?? [])
+  skipSet.add(dateKey)
+  todo.repeatSkipDates = Array.from(skipSet).sort()
+  writeTodos(todos)
 }

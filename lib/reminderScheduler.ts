@@ -14,6 +14,7 @@ interface ReminderAlarmNative {
     isRepeat?: boolean
     repeatWeekday?: number
     repeatTime?: string
+    skipDatesJson?: string
   }): Promise<{ scheduled: boolean; id: number }>
   cancelReminderAlarm(opts: { id: number }): Promise<{ cancelled: boolean }>
   stopRinging(): Promise<void>
@@ -156,6 +157,7 @@ export async function scheduleRepeatReminders(params: RepeatReminderParams): Pro
           await p.scheduleReminderAlarm({
             id: nid, title: "RemindME", body: params.body, fireAt, soundName: getRawSoundName(),
             isRepeat: true, repeatWeekday: wd, repeatTime: params.repeatTime,
+            skipDatesJson: "[]",
           })
           ids.push(nid)
         } catch { /* 单个失败不阻断其他 */ }

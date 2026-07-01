@@ -24,6 +24,7 @@ public class ReminderAlarmPlugin extends Plugin {
         boolean isRepeat = Boolean.TRUE.equals(call.getBoolean("isRepeat"));
         int repeatWeekday = call.getInt("repeatWeekday", 0);
         String repeatTime = call.getString("repeatTime", "");
+        String skipDatesJson = call.getString("skipDatesJson", "[]");
 
         Context context = getContext();
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
@@ -41,6 +42,7 @@ public class ReminderAlarmPlugin extends Plugin {
         intent.putExtra("is_repeat", isRepeat);
         intent.putExtra("repeat_weekday", repeatWeekday);
         intent.putExtra("repeat_time", repeatTime);
+        intent.putExtra("skip_dates_json", skipDatesJson);
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

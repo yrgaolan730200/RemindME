@@ -22,6 +22,7 @@ function generateRepeatOccurrences(todo: Todo, fromDate: Date, daysAhead: number
     return items
   }
 
+  const skipSet = new Set(todo.repeatSkipDates ?? [])
   const time = todo.repeatTime.slice(0, 5)
   for (let i = 0; i < daysAhead; i++) {
     const d = new Date(fromDate)
@@ -30,8 +31,10 @@ function generateRepeatOccurrences(todo: Todo, fromDate: Date, daysAhead: number
     const jsDay = d.getDay()
     const capacitorDay = jsDay === 0 ? 1 : jsDay + 1
     if (todo.repeatWeekdays.includes(capacitorDay)) {
+      const dk = dayKey(d)
+      if (skipSet.has(dk)) continue
       items.push({
-        dateKey: dayKey(d),
+        dateKey: dk,
         time,
         todoId: todo.id,
         title: todo.title,

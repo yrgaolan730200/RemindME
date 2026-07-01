@@ -4,28 +4,64 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { ArrowLeft, Trash2, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getTodos, deleteTodo, toggleTodo } from "@/lib/todos"
+import { getTodos, deleteTodo, toggleTodo, skipRepeatOccurrence } from "@/lib/todos"
 import { getTimelineItems, dayKey } from "@/lib/timeline"
 import type { TimelineItem } from "@/lib/timeline"
+import { DeleteActionSheet } from "@/components/delete-action-sheet"
 
 const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
 
 export default function HistoryPage() {
   const [todos, setTodos] = useState(getTodos)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [sheetTodo, setSheetTodo] = useState<{ todoId: number; dateKey: string } | null>(null)
 
   const loadTodos = useCallback(() => {
     setTodos(getTodos())
   }, [])
 
-  function handleDelete(e: React.MouseEvent, todoId: number) {
+  function handleDelete(e: React.MouseEvent, todoId: number, item?: TimelineItem) {
     e.preventDefault()
     e.stopPropagation()
+
+    // 重复 occurrence → 弹出操作选择
+    if (item?.isRepeatOccurrence) {
+      setSheetTodo({ todoId, dateKey: item.dateKey })
+      setSheetOpen(true)
+      return
+    }
+
+    // 普通待办 → 直接确认
     if (!window.confirm("确定要删除这个待办吗？")) return
     try {
       deleteTodo(todoId)
     } catch (error) {
       console.error("delete todo failed in history", { todoId, error })
     }
+    loadTodos()
+  }
+
+  function handleDeleteOnce() {
+    if (!sheetTodo) return
+    try {
+      skipRepeatOccurrence(sheetTodo.todoId, sheetTodo.dateKey)
+    } catch (error) {
+      console.error("skip repeat occurrence failed", { todoId: sheetTodo.todoId, dateKey: sheetTodo.dateKey, error })
+    }
+    setSheetOpen(false)
+    setSheetTodo(null)
+    loadTodos()
+  }
+
+  function handleDeleteAll() {
+    if (!sheetTodo) return
+    try {
+      deleteTodo(sheetTodo.todoId)
+    } catch (error) {
+      console.error("delete repeat todo failed", { todoId: sheetTodo.todoId, error })
+    }
+    setSheetOpen(false)
+    setSheetTodo(null)
     loadTodos()
   }
 
@@ -160,7 +196,7 @@ export default function HistoryPage() {
                         <button
                           type="button"
                           aria-label="删除待办"
-                          onClick={(e) => handleDelete(e, item.todoId)}
+                          onClick={(e) => handleDelete(e, item.todoId, item)}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground/35 active:text-destructive"
                         >
                           <Trash2 className="h-4 w-4" strokeWidth={1.5} />
@@ -174,6 +210,14 @@ export default function HistoryPage() {
           })}
         </ol>
       )}
+
+      {/* 重复待办删除操作选择 */}
+      <DeleteActionSheet
+        open={sheetOpen}
+        onDeleteOnce={handleDeleteOnce}
+        onDeleteAll={handleDeleteAll}
+        onCancel={() => { setSheetOpen(false); setSheetTodo(null) }}
+      />
     </main>
   )
 }
